@@ -42,8 +42,10 @@ local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
         local img = image.load(filename,3)
         img = image.scale(img,48,64)
 
-        local imgof = image.load(filenameOF,3)
-        imgof = image.scale(imgof,48,64)
+        if not opt.disableOpticalFlow then
+            local imgof = image.load(filenameOF,3)
+            imgof = image.scale(imgof,48,64)
+        end
 
         -- --allocate storage
         if i == 1 then
@@ -61,17 +63,19 @@ local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
             img[c] = img[c] / torch.sqrt(v)
             imagePixelData[{ {i}, {c}, {}, {}}] = img[c]
         end 
-        for c = 1,2 do
-            local v = torch.sqrt(torch.var(imgof[c]))
-            local m = torch.mean(imgof[c])
-            imgof[c] = imgof[c] - m
-            imgof[c] = imgof[c] / torch.sqrt(v)
-            imagePixelData[{ {i}, {c+3}, {}, {}}] = imgof[c]
+        if not opt.disableOpticalFlow then
+            for c = 1,2 do
+                local v = torch.sqrt(torch.var(imgof[c]))
+                local m = torch.mean(imgof[c])
+                imgof[c] = imgof[c] - m
+                imgof[c] = imgof[c] / torch.sqrt(v)
+                imagePixelData[{ {i}, {c+3}, {}, {}}] = imgof[c]
 
-            if opt.disableOpticalFlow then
-                imagePixelData[{ {i}, {c+3}, {}, {}}]:mul(0)
-            end
-        end 
+                if opt.disableOpticalFlow then
+                    imagePixelData[{ {i}, {c+3}, {}, {}}]:mul(0)
+                end
+            end 
+        end
     end
     return imagePixelData
 end

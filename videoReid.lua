@@ -69,11 +69,11 @@ cutorch.manualSeed(opt.seed)
 -- change these paths to point to the place where you store i-lids or prid datasets
 homeDir = paths.home
 if opt.dataset == 1 then
-    seqRootRGB = homeDir .. '/Documents/i-LIDS-VID/sequences/'
-    seqRootOF = homeDir .. '/Documents/i-LIDS-VID-OF-HVP/sequences/'
+    seqRootRGB = homeDir .. '/data/i-LIDS-VID/sequences/'
+    seqRootOF = homeDir .. '/data/i-LIDS-VID-OF-HVP/sequences/'
 else
-    seqRootRGB = homeDir .. '/Documents/PRID2011/multi_shot/'
-    seqRootOF = homeDir .. '/Documents/PRID2011-OF-HVP/multi_shot/'
+    seqRootRGB = homeDir .. '/data/prid_2011/multi_shot/'
+    seqRootOF = homeDir .. '/data/PRID2011-OF-HVP/multi_shot/'
 end
 
 print('loading Dataset - ',seqRootRGB,seqRootOF)
@@ -102,12 +102,18 @@ fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN(16,opt.nC
 -- train the model
 trainedModel,trainedConvnet,trainedBaseNet = trainSequence(fullModel,Combined_CNN_RNN,baseCNN,criterion,dataset,nSamplesPerPerson,trainInds,testInds,nEpochs)
 
+
+dirname = './trainedNets'
+os.execute("mkdir  -p " .. dirname)
+
 -- save the Model and Convnet (which is part of the model) to a file
-saveFileNameModel = './trainedNets/fullModel_' .. opt.saveFileName .. '.dat'
+saveFileNameModel = dirname .. '/fullModel_' .. opt.saveFileName .. '.dat'
 torch.save(saveFileNameModel,trainedModel)
-saveFileNameConvnet = './trainedNets/convNet_' .. opt.saveFileName .. '.dat'
+
+saveFileNameConvnet = dirname .. '/convNet_' .. opt.saveFileName .. '.dat'
 torch.save(saveFileNameConvnet,trainedConvnet)
-saveFileNameBasenet = './trainedNets/baseNet_' .. opt.saveFileName .. '.dat'
+
+saveFileNameBasenet = dirname .. '/baseNet_' .. opt.saveFileName .. '.dat'
 torch.save(saveFileNameBasenet,trainedBaseNet)
 
 ------------------------------------------------------------------------------------------------------------------------------------
