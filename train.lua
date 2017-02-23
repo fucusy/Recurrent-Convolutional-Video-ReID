@@ -32,7 +32,7 @@ local datasetUtils = require 'datasetUtils'
 local prepDataset = require 'prepareDataset'
 
 -- train the model on the given dataset
-function trainSequence(model,Combined_CNN_RNN,baseCNN,criterion,personImages,samplesPerPerson,trainInds,testInds)
+function trainSequence(model,Combined_CNN_RNN,baseCNN,criterion,personImages,trainInds,testInds)
 
     local parameters,gradParameters = model:getParameters()
     print('Number of parameters',parameters:size(1))
@@ -75,7 +75,7 @@ function trainSequence(model,Combined_CNN_RNN,baseCNN,criterion,personImages,sam
                 local pushPull = 1
                 local camA = 1
                 local camB = 2
-                local startA, startB
+                local startA, startB, seq_length
                 startA,startB,seq_length = datasetUtils.getPosSample(personImages,trainInds,order[i/2],opt.sampleSeqLength)
                 netInputA = personImages[trainInds[order[i/2]]][camA][{{startA,startA + seq_length - 1},{},{}}]:squeeze()
                 netInputB = personImages[trainInds[order[i/2]]][camB][{{startB,startB + seq_length - 1},{},{}}]:squeeze()
@@ -84,7 +84,7 @@ function trainSequence(model,Combined_CNN_RNN,baseCNN,criterion,personImages,sam
             else
                 -- choose a negative pair, both sequences show different persons
                 local pushPull = -1
-                local seqA,seqB,camA,camB,startA,startB
+                local seqA,seqB,camA,camB,startA,startB,seq_length
                 seqA,seqB,camA,camB,startA,startB,seq_length = datasetUtils.getNegSample(personImages,trainInds,opt.sampleSeqLength)
                 netInputA = personImages[trainInds[seqA]][camA][{{startA,startA + seq_length - 1},{},{},{}}]:squeeze()
                 netInputB = personImages[trainInds[seqB]][camB][{{startB,startB + seq_length - 1},{},{},{}}]:squeeze()
@@ -194,17 +194,17 @@ end
 
 -- perform data augmentation to a sequence of images stored in a torch tensor
 function doDataAug(seq,cropx,cropy,flip)
-    seqLen = seq:size(1)
-    seqChnls = seq:size(2)
-    seqDim1 = seq:size(3)
-    seqDim2 = seq:size(4)
+    local seqLen = seq:size(1)
+    local seqChnls = seq:size(2)
+    local seqDim1 = seq:size(3)
+    local seqDim2 = seq:size(4)
 
     -- print(seqLen,seqChnls,seqDim1,seqDim2,cropx,cropy)
 
     local daData = torch.zeros(seqLen,seqChnls,seqDim1-8,seqDim2-8)
     for t = 1,seqLen do
         -- do the data augmentation here
-        thisFrame = seq[{{t}, {},{},{}}]:squeeze():clone()
+        local thisFrame = seq[{{t}, {},{},{}}]:squeeze():clone()
         if flip == 1 then
             thisFrame = image.hflip(thisFrame)
         end

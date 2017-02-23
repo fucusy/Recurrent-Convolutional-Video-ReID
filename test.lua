@@ -34,7 +34,7 @@ function computeCMC_MeanPool_RNN(personImgs,cmcTestInds,net,outputSize,sampleSeq
 
     for shiftx = 1,8 do
         for doflip = 1,2 do
-        local shifty = shiftx
+            local shifty = shiftx
             local feats_cam_a = torch.DoubleTensor(nPersons,outputSize)            
             for i = 1,nPersons do
                 local actualSampleLen = 0
@@ -44,7 +44,7 @@ function computeCMC_MeanPool_RNN(personImgs,cmcTestInds,net,outputSize,sampleSeq
                 else
                     actualSampleLen = seqLen
                 end
-                seq_length = actualSampleLen
+                local seq_length = actualSampleLen
                 local seq = personImgs[cmcTestInds[i]][1][{{1,1 + (actualSampleLen - 1)},{},{}}]:squeeze():clone()
                 if seq:dim() == 3 then
                     seq:resize(1,seq:size(1),seq:size(2),seq:size(3))
@@ -77,7 +77,7 @@ function computeCMC_MeanPool_RNN(personImgs,cmcTestInds,net,outputSize,sampleSeq
                     actualSampleLen = seqLen
                     seqOffset = 1
                 end
-                seq_length = actualSampleLen
+                local seq_length = actualSampleLen
                 local seq = personImgs[cmcTestInds[i]][2][{{seqOffset,seqOffset + (actualSampleLen - 1)},{},{}}]:squeeze():clone()
                 if seq:dim() == 3 then
                     seq:resize(1,seq:size(1),seq:size(2),seq:size(3))
@@ -150,7 +150,7 @@ function computeCMC_MeanPool_RNN(personImgs,cmcTestInds,net,outputSize,sampleSeq
         end
     end
     cmc = (cmc / nPersons) * 100
-    cmcString = ''
+    local cmcString = ''
     for c = 1,50 do
         if c <= nPersons then
             cmcString = cmcString .. ' ' .. torch.floor(cmc[c])
