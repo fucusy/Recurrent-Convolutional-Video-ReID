@@ -32,20 +32,39 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
     local cnn = nn.Sequential()
 
     local ninputChannels = 5
+    if opt.disableOpticalFlow then
+        ninputChannels = 3
+    else
+        ninputChannels = 5
+    end
+
     cnn:add(nn.SpatialZeroPadding(padDim, padDim, padDim, padDim))
-    cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[1], filtsize[1], filtsize[1], 1, 1))
+    if opt.noGPU then
+        cnn:add(nn.SpatialConvolution(ninputChannels, nFilters[1], filtsize[1], filtsize[1], 1, 1))
+    else
+        cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[1], filtsize[1], filtsize[1], 1, 1))
+    end
     cnn:add(nn.Tanh())
     cnn:add(nn.SpatialMaxPooling(poolsize[1],poolsize[1],stepSize[1],stepSize[1]))
 
     ninputChannels = nFilters[1]
     cnn:add(nn.SpatialZeroPadding(padDim, padDim, padDim, padDim))
-    cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[2], filtsize[2], filtsize[2], 1, 1))
+    if opt.noGPU then
+        cnn:add(nn.SpatialConvolution(ninputChannels, nFilters[2], filtsize[2], filtsize[2], 1, 1))
+    else
+        cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[2], filtsize[2], filtsize[2], 1, 1))
+    end
+
     cnn:add(nn.Tanh())
     cnn:add(nn.SpatialMaxPooling(poolsize[2],poolsize[2],stepSize[2],stepSize[2]))
 
     ninputChannels = nFilters[2]
     cnn:add(nn.SpatialZeroPadding(padDim, padDim, padDim, padDim))
-    cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[3], filtsize[3], filtsize[3], 1, 1))
+    if opt.noGPU then
+        cnn:add(nn.SpatialConvolution(ninputChannels, nFilters[3], filtsize[3], filtsize[3], 1, 1))
+    else
+        cnn:add(nn.SpatialConvolutionMM(ninputChannels, nFilters[3], filtsize[3], filtsize[3], 1, 1))
+    end
     cnn:add(nn.Tanh())
     cnn:add(nn.SpatialMaxPooling(poolsize[3],poolsize[3],stepSize[3],stepSize[3]))
 
@@ -54,13 +73,17 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
     cnn:add(nn.Reshape(1,nFullyConnected))
     cnn:add(nn.Dropout(opt.dropoutFrac))    
     cnn:add(nn.Linear(nFullyConnected,opt.embeddingSize))
-    cnn:cuda()
+    if not opt.noGPU then
+        cnn:cuda()
+    end
 
     local h2h = nn.Sequential()
     h2h:add(nn.Tanh())
     h2h:add(nn.Dropout(opt.dropoutFracRNN))
     h2h:add(nn.Linear(opt.embeddingSize,opt.embeddingSize))
-    h2h:cuda()
+    if not opt.noGPU then
+        h2h:cuda()
+    end
 
     local r1 = nn.Recurrent(
         opt.embeddingSize,
@@ -101,19 +124,25 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
     local mlp2 = nn.ParallelTable()
     mlp2:add(Combined_CNN_RNN_1)
     mlp2:add(Combined_CNN_RNN_2)
-    mlp2:cuda()
+    if not opt.noGPU then
+        mlp2:cuda()
+    end
 
     local mlp3 = nn.ConcatTable()
     mlp3:add(nn.Identity())
     mlp3:add(nn.Identity())
     mlp3:add(nn.Identity())
-    mlp3:cuda()
+    if not opt.noGPU then
+        mlp3:cuda()
+    end
 
     local mlp4 = nn.ParallelTable()
     mlp4:add(nn.Identity())
     mlp4:add(nn.SelectTable(1))
     mlp4:add(nn.SelectTable(2))
-    mlp4:cuda()
+    if not opt.noGPU then
+        mlp4:cuda()
+    end
 
     -- used to predict the identity of each person
     local classifierLayer = nn.Linear(opt.embeddingSize,nPersonsTrain)
@@ -122,25 +151,33 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
     local mlp6 = nn.Sequential()
     mlp6:add(classifierLayer)
     mlp6:add(nn.LogSoftMax())
-    mlp6:cuda()
+    if not opt.noGPU then
+        mlp6:cuda()
+    end
     
     local mlp7 = nn.Sequential()
     mlp7:add(classifierLayer:clone('weight','bias','gradWeight','gradBias'))
     mlp7:add(nn.LogSoftMax())
-    mlp7:cuda()
+    if not opt.noGPU then
+        mlp7:cuda()
+    end
 
     local mlp5 = nn.ParallelTable()
     mlp5:add(nn.PairwiseDistance(2))
     mlp5:add(mlp6)
     mlp5:add(mlp7)
-    mlp5:cuda()
+    if not opt.noGPU then
+        mlp5:cuda()
+    end
 
     local fullModel = nn.Sequential()
     fullModel:add(mlp2)
     fullModel:add(mlp3)
     fullModel:add(mlp4)
     fullModel:add(mlp5)
-    fullModel:cuda()
+    if not opt.noGPU then
+        fullModel:cuda()
+    end
 
     local crit = nn.SuperCriterion()
     crit:add(nn.HingeEmbeddingCriterion(2),1)

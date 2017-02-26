@@ -36,3 +36,4 @@ You must have an Nvidia GPU in order to use CUDA. See http://torch.ch/ for detai
 Example command-line options that will allow you to run the code in standard configuration:
 
 	th videoReid.lua -nEpochs 500 -dataset 1 -dropoutFrac 0.6 -sampleSeqLength 16 -samplingEpochs 100 -seed 1
+	th videoReid.lua -nEpochs 5 -dataset 2 -dropoutFrac 0.6 -sampleSeqLength 16 -samplingEpochs 5 -seed 1 -disableOpticalFlow
