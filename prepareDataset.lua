@@ -22,8 +22,10 @@ require 'torch'
 require 'nn'
 require 'nnx'
 require 'optim'
+
 -- require 'cunn'
 -- require 'cutorch'
+
 require 'paths'
 require 'image'
 
@@ -33,22 +35,27 @@ require 'image'
 local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
 
     local nImgs = #filesList
-    local imagePixelData
     local dim = 5
     if opt.disableOpticalFlow then
       dim = 3
     end
-    for i,file in ipairs(filesList) do  
+    local height = 48
+    local width = 64
+    local imagePixelData = torch.DoubleTensor(1,dim,height,width)
+    if #filesList == 0 then
+        print(string.format('no image found at %s, return zero tensor', cameraDir))
+    end
+    for i,file in ipairs(filesList) do
 
         local filename = paths.concat(cameraDir,file)
         local filenameOF = paths.concat(opticalflowDir,file)
 
         local img = image.load(filename,3)
-        img = image.scale(img,48,64)
+        img = image.scale(img,height,width)
 
         if not opt.disableOpticalFlow then
             local imgof = image.load(filenameOF,3)
-            imgof = image.scale(imgof,48,64)
+            imgof = image.scale(imgof,height,width)
         end
 
         -- --allocate storage
@@ -103,13 +110,14 @@ function splitByComma(str)
     return res
 end
 
-function DatasetGenerator.new(filename, video_id_image)
+function DatasetGenerator.new(filename, video_id_image, hids)
     local self = setmetatable({}, DatasetGenerator)
     self._data = {{}, {} }
     self._video_images = {}
     self._pos_index = 1
     self._neg_index = 1
     self._size = 0
+    self._hids = hids
     for line in io.lines(filename) do
         local res = splitByComma(line)
         local is_pos = tonumber(res[3])
@@ -130,10 +138,57 @@ function DatasetGenerator.new(filename, video_id_image)
 end
 
 
+function DatasetGenerator:load_images(video_id, image_count)
+    local image_start = 1
+    local images = {}
+    for j = image_start, image_start + image_count - 1 do
+        table.insert(images, self._video_images[video_id][j])
+    end
+    local hid = string.sub(video_id, 1, 3)
+    local video_path = string.format('%s/%s/%s/extract/', opt.dataPath, hid, video_id)
+    local video_images = loadSequenceImages(video_path, '', images)
+    return video_images
+end
+
+function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx, shifty)
+    local img_seqs = self._video_images[video_id]
+    local actualSampleLen = 0
+    local seqLen = #img_seqs
+    if seqLen > sampleSeqLength then
+        actualSampleLen = sampleSeqLength
+    else
+        actualSampleLen = seqLen
+    end
+    print(video_id)
+    local seq = self:load_images(video_id, actualSampleLen)
+
+    -- resize if only one image, but I do not think there is only one image
+    if seq:dim() == 3 then
+        seq:resize(1,seq:size(1),seq:size(2),seq:size(3))
+    end
+
+    -- augment each of the images in the sequence
+    local augSeq = {}
+    for k = 1,actualSampleLen do
+        local u = seq[{{k},{},{},{}}]:squeeze():clone()
+        if doflip == 1 then
+            u = image.hflip(u)
+        end
+        u = image.crop(u,shiftx,shifty,40+shiftx,56+shifty)
+        u = u - torch.mean(u)
+        if opt.noGPU then
+          augSeq[k] = u:clone()
+        else
+          augSeq[k] = u:cuda():clone()
+        end
+    end
+    return net:forward(augSeq):double()
+end
+
+
 -- the : syntax here causes a "self" arg to be implicitly added before any other args
 function DatasetGenerator:next_batch(batch_size, is_pos)
     local image_count = opt.sampleSeqLength
-    local image_start = 1
     local start = 1
     if is_pos == 1 then
         start = self._pos_index
@@ -157,18 +212,10 @@ function DatasetGenerator:next_batch(batch_size, is_pos)
     for i = start, last do
          local video_id_1 = self._data[is_pos][i][1]
          local video_id_2 = self._data[is_pos][i][2]
-         local images1 = {}
-         local images2 = {}
-         for j = image_start, image_start + image_count - 1 do
-          table.insert(images1, self._video_images[video_id_1][j])
-          table.insert(images2, self._video_images[video_id_2][j])
-         end
          local hid1 = string.sub(video_id_1, 1, 3)
          local hid2 = string.sub(video_id_2, 1, 3)
-         local video_1_path = string.format('%s/%s/%s/extract/', opt.dataPath, hid1, video_id_1)
-         local video_2_path = string.format('%s/%s/%s/extract/', opt.dataPath, hid2, video_id_2)
-         local video_1_images = loadSequenceImages(video_1_path, '', images1)
-         local video_2_images = loadSequenceImages(video_2_path, '', images2)
+         local video_1_images = self:load_images(video_id_1, image_count)
+         local video_2_images = self:load_images(video_id_2, image_count)
          table.insert(res, {video_1_images, video_2_images, hid1, hid2})
     end
     return res
@@ -286,9 +333,22 @@ function prepareDataset.prepareDatasetCASIA_B_RNN()
     local test_filename = string.format('%s/test_pairs.txt', opt.dataPath)
     local video_image = string.format('%s/video_id_image_list', opt.dataPath)
     local res = {}
-    res['train'] = DatasetGenerator.new(train_filename, video_image)
-    res['val'] = DatasetGenerator.new(val_filename, video_image)
-    res['test'] = DatasetGenerator.new(test_filename, video_image)
+    local train_hids = {}
+    local val_hids = {}
+    local test_hids = {}
+    for i=1, 50 do
+        table.insert(train_hids, string.format('%03d', i))
+    end
+    for i=51,74 do
+        table.insert(val_hids, string.format('%03d', i))
+    end
+    for i=75,124 do
+        table.insert(test_hids, string.format('%03d', i))
+    end
+
+    res['train'] = DatasetGenerator.new(train_filename, video_image, train_hids)
+    res['val'] = DatasetGenerator.new(val_filename, video_image, val_hids)
+    res['test'] = DatasetGenerator.new(test_filename, video_image, test_hids)
     return res
 end
 
@@ -309,7 +369,7 @@ function prepareDataset.prepareDataset(datasetRootDir,datasetRootDirOF,fileExt)
             end
             local seqRoot = paths.concat(datasetRootDir,cameraDirName,pdir)
             local seqRootOF = paths.concat(datasetRootDirOF,cameraDirName,pdir)
-            local seqImgs = getSequenceImageFiles(seqRoot,fileExt)          
+            local seqImgs = getSequenceImageFiles(seqRoot,fileExt)
             dataset[i][cam] = loadSequenceImages(seqRoot,seqRootOF,seqImgs)         
         end
         

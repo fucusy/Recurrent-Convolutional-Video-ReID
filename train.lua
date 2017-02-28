@@ -22,8 +22,10 @@ require 'torch'
 require 'nn'
 require 'nnx'
 require 'optim'
--- require 'cunn'
--- require 'cutorch'
+
+require 'cunn'
+require 'cutorch'
+
 require 'image'
 require 'paths'
 require 'rnn'
@@ -33,6 +35,7 @@ local prepDataset = require 'prepareDataset'
 
 -- train the model on the given dataset
 function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, trainInds, testInds)
+    local maxDiffSubSame = -1
     local dim = 3
     if opt.disableOpticalFlow then
         dim = 3
@@ -80,6 +83,12 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
             order = torch.randperm(nTrainPersons)
         else
             iteration_count = nTrainPersons
+        end
+        if opt.debug then
+            iteration_count = 100
+        end
+        if opt.trainBatch < iteration_count then
+            iteration_count = opt.trainBatch
         end
         for i = 1, iteration_count do
 
@@ -200,6 +209,30 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                     print(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, batchErr, time))
                     batchErr = 0
                 end
+                if i % opt.testBatch == 0 then
+                    local avgSame, avgDiff
+                    avgSame, avgDiff = compute_across_view_precision_casia(dataset['val'], Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength, opt.testValPor)
+                    if avgDiff - avgSame > maxDiffSubSame then
+                        print(string.format('change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
+                        maxDiffSubSame = avgDiff - avgSame
+                        local dirname = './trainedNets'
+                        os.execute("mkdir  -p " .. dirname)
+                        -- save the Model and Convnet (which is part of the model) to a file
+                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_.dat', dirname,opt.saveFileName, maxDiffSubSame)
+                        local saveFileNameModel = string.format(filename_tmp, 'fullModel')
+                        torch.save(saveFileNameModel,model)
+
+                        local saveFileNameConvnet = string.format(filename_tmp, 'convNet')
+                        torch.save(saveFileNameConvnet,Combined_CNN_RNN)
+
+                        local saveFileNameBasenet = string.format(filename_tmp, 'baseNet')
+                        torch.save(saveFileNameBasenet,baseCNN)
+                    else
+                        print(string.format('do not change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
+                    end
+
+
+                end
             end
             :: continue :: end
             if opt.dataset == 1 or opt.dataset == 2 then
@@ -209,26 +242,25 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 batchErr = 0
             end
             if (eph % opt.samplingEpochs == 0) then
-
                 model:evaluate()
                 Combined_CNN_RNN:evaluate()
-
-                local cmcTest, cmcTrain, simMatTest, simMatTrain
-
-                cmcTest, simMatTest = computeCMC_MeanPool_RNN(dataset, testInds, Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength)
-                cmcTrain, simMatTrain = computeCMC_MeanPool_RNN(dataset, trainInds, Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength)
-
-                local outStringTest = 'Test  '
-                local outStringTrain = 'Train '
-                local printInds = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
-                for c = 1, #printInds do
-                    if c < nTrainPersons then
-                        outStringTest = outStringTest .. torch.floor(cmcTest[printInds[c]]) .. ' '
-                        outStringTrain = outStringTrain .. torch.floor(cmcTrain[printInds[c]]) .. ' '
+                if opt.dataset == 1 or opt.dataset == 2 then
+                    local cmcTest, cmcTrain, simMatTest, simMatTrain
+                    cmcTest, simMatTest = computeCMC_MeanPool_RNN(dataset, testInds, Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength)
+                    cmcTrain, simMatTrain = computeCMC_MeanPool_RNN(dataset, trainInds, Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength)
+                    local outStringTest = 'Test  '
+                    local outStringTrain = 'Train '
+                    local printInds = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
+                    for c = 1, #printInds do
+                        if c < nTrainPersons then
+                            outStringTest = outStringTest .. torch.floor(cmcTest[printInds[c]]) .. ' '
+                            outStringTrain = outStringTrain .. torch.floor(cmcTrain[printInds[c]]) .. ' '
+                        end
                     end
+                    print(outStringTest)
+                    print(outStringTrain)
+                else
                 end
-                print(outStringTest)
-                print(outStringTrain)
 
                 model:training()
                 Combined_CNN_RNN:training()

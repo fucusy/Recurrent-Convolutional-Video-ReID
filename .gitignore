@@ -1,3 +1,9 @@
+# IDE
+.idea
+preprocess_script/.idea/workspace.xml
+class_by_table.lua
+
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db

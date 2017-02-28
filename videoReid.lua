@@ -23,8 +23,9 @@ require 'nn'
 require 'nnx'
 require 'optim'
 
--- require 'cunn'
--- require 'cutorch'
+require 'cunn'
+require 'cutorch'
+
 require 'image'
 require 'paths'
 require 'rnn'
@@ -40,7 +41,7 @@ local prepDataset = require 'prepareDataset'
 -- cutorch.setDevice(1)
 
 cmd = torch.CmdLine()
-cmd:option('-nEpochs',500,'number of training epochs')
+cmd:option('-nEpochs',2,'number of training epochs')
 cmd:option('-dataset',3,'1 -  ilids, 2 - prid, 3 - CASIA B clipped')
 cmd:option('-sampleSeqLength',16,'length of sequence to train network')
 cmd:option('-gradClip',5,'magnitude of clip on the RNN gradient')
@@ -57,8 +58,12 @@ cmd:option('-nConvFilters',32)
 cmd:option('-embeddingSize',128)
 cmd:option('-hingeMargin',2)
 cmd:option('-dataPath','/Volumes/Passport/data/gait-rnn', 'base data path')
-cmd:option('-noGPU', true, 'do not use GPU')
-cmd:option('-debug', true, 'debug mode or not')
+cmd:option('-noGPU', false, 'do not use GPU')
+cmd:option('-debug', false, 'debug mode or not')
+cmd:option('-testBatch', 10, 'test on validation every batch')
+cmd:option('-trainBatch', 20, 'how monay batch you train in every epoch')
+cmd:option('-testValPor', 0.05, 'test on validation at proportion')
+
 
 opt = cmd:parse(arg)
 print(opt)
@@ -133,7 +138,6 @@ trainedModel,trainedConvnet,trainedBaseNet = trainSequence(fullModel,Combined_CN
 
 dirname = './trainedNets'
 os.execute("mkdir  -p " .. dirname)
-
 -- save the Model and Convnet (which is part of the model) to a file
 saveFileNameModel = dirname .. '/fullModel_' .. opt.saveFileName .. '.dat'
 torch.save(saveFileNameModel,trainedModel)
