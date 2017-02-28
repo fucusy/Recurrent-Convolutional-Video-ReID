@@ -131,7 +131,9 @@ def make_data_for_rnn():
     for neg in test_neg:
         test_file.write('%s,%s,0\n' % (neg[0], neg[1]))
     test_file.close()
+    generate_video_image_file()
 
+def generate_video_image_file():
     seqs = ['nm-01', 'nm-02', 'nm-03', 'nm-04', 'nm-05', 'nm-06', 'cl-01', 'cl-02', 'bg-01', 'bg-02', ]
     views = ['%03d' % i for i in range(0, 181, 18)]
     hids = ['%03d' % i for i in range(1, 125)]
@@ -149,6 +151,7 @@ def make_data_for_rnn():
                 video_id = '%s-%s-%s' % (hid, seq, view)
                 image_path = '%s/%s/%s/extract/' % (conf.project.data_path, hid, video_id)
                 filenames = os.listdir(image_path)
+                filenames = sorted(filenames)
                 video_id_path_file.write('%s,%s\n' % (video_id, ','.join(filenames)))
 
                 count += 1
@@ -157,4 +160,5 @@ def make_data_for_rnn():
     video_id_path_file.close()
 
 if __name__ == '__main__':
-    make_data_for_rnn()
+    #make_data_for_rnn()
+    generate_video_image_file()
