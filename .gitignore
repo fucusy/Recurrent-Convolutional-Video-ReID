@@ -1,3 +1,10 @@
+#antu-generate by python
+.pyc
+preprocess_script/*.pyc
+preprocess_script/.idea
+preprocess_script/*.log
+trainedNets/
+
 # IDE
 .idea
 preprocess_script/.idea/workspace.xml
