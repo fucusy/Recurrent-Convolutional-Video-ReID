@@ -56,5 +56,8 @@ def prepare_same_size_seq_rbg_main(test=True):
         print 'All subprocesses done.'
 
 if __name__ == '__main__':
-    test = False
-    prepare_same_size_seq_rbg_main(test)
+    #test = False
+    # prepare_same_size_seq_rbg_main(test)
+    video_id = '005-nm-06-000'
+    prepare_same_size_seq_rbg(video_id)
+

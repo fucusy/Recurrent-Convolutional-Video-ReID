@@ -1,14 +1,15 @@
 from multiprocessing import Pool
+from skimage import measure
 import numpy as np
 import os
 import subprocess
-from scipy.misc import imsave, imread
-from skimage.morphology import disk
+from scipy.misc import imsave, imread, imresize
+from skimage.morphology import disk, erosion, dilation
 from skimage import color as color, filter
 import time
 
 import logging
-import sys
+
 level = logging.NOTSET
 log_filename = '%s.log' % __file__
 logging.basicConfig(level=level,
@@ -91,6 +92,8 @@ def extract_cover(video_path, back_video_path):
             base = os.path.basename(img_path[i])
             save_filename = "%s/%s.bmp" % (cover_path, os.path.splitext(base)[0])
             sub_img, res = subtract(img, back_grey_img)
+            cover_height = res[2]
+            cover_width = res[3]
             imsave(save_filename, sub_img)
 
             line = [base]
@@ -104,12 +107,30 @@ def extract_cover(video_path, back_video_path):
             extract_img_filename = "%s/%s.jpg" % (extract_path, base.rstrip(".jpg"))
             height = extract_img.shape[0]
             width = extract_img.shape[1]
-            if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
-                imsave(extract_img_filename, extract_img)
+            if cover_height > conf.data.crop_size_height or cover_width > conf.data.crop_size_width:
+                # ignore large cover, no full human body in this kind of image
+                pass
+            else:
+                ratio_setting = conf.data.crop_size_height * 1.0 / conf.data.crop_size_width
+                if cover_height * 1.0 / cover_width >= ratio_setting:
+                    fit_cover_height = cover_height
+                    fit_cover_width = int(fit_cover_height / ratio_setting)
+                else:
+                    fit_cover_width = cover_width
+                    fit_cover_height = int(fit_cover_width * ratio_setting)
+                if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
+                    idx_height = int((conf.data.crop_size_height - fit_cover_height) / 2)
+                    idx_width = int((conf.data.crop_size_width - fit_cover_width) / 2)
+                    extract_img = np_helper.extract_np(extract_img
+                                                       , [idx_height, idx_width]
+                                                       , [fit_cover_height, fit_cover_width]
+                                                       , exact=True
+                                                       )
+                    extract_img = imresize(extract_img, (conf.data.crop_size_height, conf.data.crop_size_width))
+                    imsave(extract_img_filename, extract_img)
 
-            extract_cover_img = np_helper.extract_np(sub_img, res[0:2], res[2:4])
             if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
-                imsave(extract_img_filename, extract_img)
+                extract_cover_img = np_helper.extract_np(sub_img, res[0:2], res[2:4])
                 extract_cover_img = grey2bmp(extract_cover_img)
                 extract_cover_filename = '%s/%s.bmp' % (extract_cover_path, base.rstrip('.jpg'))
                 imsave(extract_cover_filename, extract_cover_img)
@@ -273,13 +294,39 @@ def subtract(img, back):
     low_values_indices = sub_img < clap  # Where values are low
     sub_img[low_values_indices] = 0  # All low values set to 0
 
-
     sub_img_uint8 = sub_img * 255
     sub_img_uint8 = sub_img_uint8.astype(np.uint8)
     sub_img_uint8 = filter.median(sub_img_uint8, disk(5))
 
-    sub_img = sub_img_uint8.astype(np.float32) / 255
-    return sub_img, get_human_position(sub_img_uint8)
+    cover_val = max(clap-0.01, 0)
+    high_values_indices = sub_img_uint8 >= cover_val
+    sub_img_uint8[high_values_indices] = 255
+    all_labels = measure.label(sub_img_uint8, background=0)
+    label_count = {}
+    max_count_label = 0
+    max_count = 0
+    for i in range(len(all_labels)):
+        for j in range(len(all_labels[i])):
+            label = all_labels[i][j]
+            if label == 0:
+                continue
+            if label not in label_count:
+                label_count[label] = 0
+            label_count[label] += 1
+            if label_count[label] > max_count:
+                max_count = label_count[label]
+                max_count_label = label
+    for i in range(len(all_labels)):
+        for j in range(len(all_labels[i])):
+            label = all_labels[i][j]
+            if label == 0:
+                continue
+            elif label == max_count_label:
+                all_labels[i][j] = 255
+            else:
+                all_labels[i][j] = 0
+    sub_img = all_labels.astype(np.float32) / 255
+    return sub_img, get_human_position(all_labels)
 
 
 def get_human_position(img):

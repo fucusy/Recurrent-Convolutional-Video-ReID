@@ -142,7 +142,7 @@ def shift_down(img, down=10.0, padding_val=0, padding=True):
     return shift_up(img, -down, padding_val, padding)
 
 
-def extract_np(img, left_up_corner, box_size):
+def extract_np(img, left_up_corner, box_size, exact=False):
     """
 
     :param img: numpy array, test rbg numpy array
@@ -154,11 +154,16 @@ def extract_np(img, left_up_corner, box_size):
     height = img.shape[0]
     width = img.shape[1]
 
-    up_blank = left_up_corner[0] - (conf.data.crop_size_height - box_size[0]) / 2
-    left_blank = left_up_corner[1] - (conf.data.crop_size_width - box_size[1]) / 2
-
-    down_blank = height - up_blank - conf.data.crop_size_height
-    right_blank = width - left_blank - conf.data.crop_size_width
+    if exact:
+        up_blank = left_up_corner[0]
+        left_blank = left_up_corner[1]
+        down_blank = height - up_blank - box_size[0]
+        right_blank = width - left_blank - box_size[1]
+    else:
+        up_blank = left_up_corner[0] - (conf.data.crop_size_height - box_size[0]) / 2
+        left_blank = left_up_corner[1] - (conf.data.crop_size_width - box_size[1]) / 2
+        down_blank = height - up_blank - conf.data.crop_size_height
+        right_blank = width - left_blank - conf.data.crop_size_width
 
     img = shift_left(img, left_blank, padding=False)
     img = shift_right(img, right_blank, padding=False)

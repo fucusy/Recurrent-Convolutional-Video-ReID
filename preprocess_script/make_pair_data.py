@@ -1,4 +1,6 @@
+import operator
 import os
+
 import logging
 from multiprocessing import Pool
 import time, random
@@ -159,6 +161,30 @@ def generate_video_image_file():
                     logging.info('%05dth/%05d, %s' % (count, all, video_id))
     video_id_path_file.close()
 
+def image_length_analysis(filename):
+    image_length_count_dict = {}
+    image_length_video_ids = {}
+    for line in open(filename, 'r'):
+        split_line = line.split(',')
+        image_len = len(split_line) - 1
+        if image_len not in image_length_count_dict:
+            image_length_count_dict[image_len] = 0
+        image_length_count_dict[image_len] += 1
+
+        if image_len not in image_length_video_ids:
+            image_length_video_ids[image_len] = set()
+        image_length_video_ids[image_len].add(split_line[0])
+
+    return image_length_count_dict, image_length_video_ids
+
 if __name__ == '__main__':
     #make_data_for_rnn()
-    generate_video_image_file()
+    #generate_video_image_file()
+    video_id_path_filename = '%s/video_id_image_list' % conf.project.data_path
+    res, video_ids = image_length_analysis(video_id_path_filename)
+    res_sorted = sorted(res.items(), key=operator.itemgetter(0))
+    for item in res_sorted:
+        video_ids_str = ''
+        if item[1] < 8 and item[0] in video_ids:
+            video_ids_str =','.join(video_ids[item[0]])
+        print('len %03d, count %05d, video_ids: %s' % (item[0], item[1], video_ids_str))
