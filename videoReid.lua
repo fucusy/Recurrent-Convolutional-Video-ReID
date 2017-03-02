@@ -33,24 +33,24 @@ require 'rnn'
 require 'buildModel'
 require 'train'
 require 'test'
+require 'tool'
+
 
 local datasetUtils = require 'datasetUtils'
 local prepDataset = require 'prepareDataset'
 
--- set the GPU
--- cutorch.setDevice(1)
 
 cmd = torch.CmdLine()
 cmd:option('-nEpochs',2,'number of training epochs')
+cmd:option('-trainStart', 100,'start at index when trainig')
+cmd:option('-valStart', 100,'start at index when validation')
 cmd:option('-dataset',3,'1 -  ilids, 2 - prid, 3 - CASIA B clipped')
 cmd:option('-sampleSeqLength',16,'length of sequence to train network')
 cmd:option('-gradClip',5,'magnitude of clip on the RNN gradient')
 cmd:option('-saveFileName','basicnet','name to save dataset file')
-cmd:option('-usePredefinedSplit',false,'Use predefined test/training split loaded from a file')
 cmd:option('-dropoutFrac',0.6,'fraction of dropout to use between layers')
 cmd:option('-dropoutFracRNN',0.6,'fraction of dropout to use between RNN layers')
 cmd:option('-samplingEpochs',100,'how often to compute the CMC curve - dont compute too much - its slow!')
-cmd:option('-disableOpticalFlow',true,'use optical flow features or not')
 cmd:option('-seed',1,'random seed')
 cmd:option('-learningRate',1e-3)
 cmd:option('-momentum',0.9)
@@ -58,16 +58,28 @@ cmd:option('-nConvFilters',32)
 cmd:option('-embeddingSize',128)
 cmd:option('-hingeMargin',2)
 cmd:option('-dataPath','/Volumes/Passport/data/gait-rnn', 'base data path')
+cmd:option('-testBatch', 50000, 'calculate cmc on validation every batch')
+cmd:option('-testLossBatch', 1000, 'calculate loss on validation every batch')
+cmd:option('-testLossBatchCount', 1000, 'calculate loss on validation every batch')
+cmd:option('-trainBatch', 200000000, 'how many batch you train in every epoch')
+cmd:option('-testValPor', 0.5, 'test on validation at proportion')
+cmd:option('-loadModelFromFile', '', 'load fullmodel, rnn model, cnn model')
+
+
+cmd:option('-usePredefinedSplit',false,'Use predefined test/training split loaded from a file')
+cmd:option('-disableOpticalFlow',true,'use optical flow features or not')
 cmd:option('-noGPU', false, 'do not use GPU')
 cmd:option('-debug', false, 'debug mode or not')
-cmd:option('-testBatch', 10, 'test on validation every batch')
-cmd:option('-trainBatch', 20, 'how monay batch you train in every epoch')
-cmd:option('-testValPor', 0.05, 'test on validation at proportion')
-
+cmd:option('-fcnModel', false, 'load self define full convontional network model')
+cmd:option('-gpuDevice', 2, 'set gpu device')
 
 opt = cmd:parse(arg)
 print(opt)
 
+-- set the GPU
+if not opt.noGPU then
+    cutorch.setDevice(opt.gpuDevice)
+end
 function isnan(z)
     return z ~= z
 end
@@ -90,7 +102,7 @@ else
     seqRootOF = '/Volumes/Passport/data/gait-rnn-OF/'
 end
 
-print('loading Dataset - ',seqRootRGB,seqRootOF)
+info(string.format('loading Dataset - from %s, %s',seqRootRGB,seqRootOF))
 local fileExt = ''
 if opt.dataset == 3 then
     fileExt = '.jpg'
@@ -103,12 +115,12 @@ if opt.dataset == 3 then
     dataset = prepDataset.prepareDatasetCASIA_B_RNN()
 else
     dataset = prepDataset.prepareDataset(seqRootRGB,seqRootOF,fileExt)
-    print('dataset loaded',#dataset,seqRootRGB,seqRootOF)
+    info('dataset loaded',#dataset,seqRootRGB,seqRootOF)
 end
 
 if opt.usePredefinedSplit then
     -- useful for debugging to run with exactly the same test/train split
-    print('loading predefined test/training split')
+    info('loading predefined test/training split')
     local datasetSplit
     if opt.dataset == 1 then
         datasetSplit = torch.load('./data/dataSplit.th7')
@@ -118,7 +130,7 @@ if opt.usePredefinedSplit then
     testInds = datasetSplit.testInds
     trainInds = datasetSplit.trainInds
 elseif opt.dataset == 1 or opt.dataset == 2 then
-    print('randomizing test/training split')
+    info('randomizing test/training split')
     trainInds,testInds = datasetUtils.partitionDataset(#dataset,0.5)
 end
 
@@ -130,11 +142,35 @@ else
 end
 
 -- build the model
-fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN(16,opt.nConvFilters,opt.nConvFilters,person_count)
+if opt.fcnModel then
+    opt.embeddingSize = opt.nConvFilters * 10 * 8
+    fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN_FCN(16,opt.nConvFilters,opt.nConvFilters,person_count)
+else
+    fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN(16,opt.nConvFilters,opt.nConvFilters,person_count)
+end
+
+-- if loadModelFromFile is set, load model from it
+local filenames = splitByComma(opt.loadModelFromFile)
+
+if #filenames >= 3 then
+    fullModel = torch.load(filenames[1])
+    info(string.format('loaded full model from %s', filenames[1]))
+
+    Combined_CNN_RNN = torch.load(filenames[2])
+    info(string.format('loaded CNN_RNN from %s', filenames[2]))
+
+    baseCNN = torch.load(filenames[3])
+    info(string.format('loaded cnn from %s', filenames[3]))
+end
+
+dataset['train']:set_pos_index(math.floor(opt.trainStart/2+1))
+dataset['train']:set_neg_index(math.floor(opt.trainStart/2+1))
+
+dataset['val']:set_pos_index(math.floor(opt.valStart/2+1))
+dataset['val']:set_neg_index(math.floor(opt.valStart/2+1))
 
 -- train the model
 trainedModel,trainedConvnet,trainedBaseNet = trainSequence(fullModel,Combined_CNN_RNN,baseCNN,criterion,dataset,trainInds,testInds)
-
 
 dirname = './trainedNets'
 os.execute("mkdir  -p " .. dirname)
@@ -156,7 +192,7 @@ trainedConvnet:evaluate()
 nTestImages = {1,2,4,8,16,32,64,128}
 
 for n = 1,#nTestImages do
-    print('test multiple images '..nTestImages[n])
+    info('test multiple images '..nTestImages[n])
     -- default method of computing CMC curve
     computeCMC_MeanPool_RNN(dataset,testInds,trainedConvnet,128,nTestImages[n])
 end

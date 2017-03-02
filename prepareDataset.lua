@@ -23,8 +23,8 @@ require 'nn'
 require 'nnx'
 require 'optim'
 
--- require 'cunn'
--- require 'cutorch'
+require 'cunn'
+require 'cutorch'
 
 require 'paths'
 require 'image'
@@ -43,7 +43,7 @@ local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
     local width = 64
     local imagePixelData = torch.DoubleTensor(1,dim,height,width)
     if #filesList == 0 then
-        print(string.format('no image found at %s, return zero tensor', cameraDir))
+        info(string.format('no image found at %s, return zero tensor', cameraDir))
     end
     for i,file in ipairs(filesList) do
 
@@ -102,13 +102,6 @@ setmetatable(DatasetGenerator, {
     end,
 })
 
-function splitByComma(str)
-    local res = {}
-    for word in string.gmatch(str, '([^,\n]+)') do
-        table.insert(res, word)
-    end
-    return res
-end
 
 function DatasetGenerator.new(filename, video_id_image, hids)
     local self = setmetatable({}, DatasetGenerator)
@@ -137,6 +130,13 @@ function DatasetGenerator.new(filename, video_id_image, hids)
     return self
 end
 
+function DatasetGenerator:set_pos_index(index)
+    self._pos_index = index
+end
+
+function DatasetGenerator:set_neg_index(index)
+    self._neg_index = index
+end
 
 function DatasetGenerator:load_images(video_id, image_count)
     local image_start = 1
@@ -159,7 +159,7 @@ function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx
     else
         actualSampleLen = seqLen
     end
-    print(video_id)
+    info(video_id)
     local seq = self:load_images(video_id, actualSampleLen)
 
     -- resize if only one image, but I do not think there is only one image
@@ -184,6 +184,7 @@ function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx
     end
     return net:forward(augSeq):double()
 end
+
 
 
 -- the : syntax here causes a "self" arg to be implicitly added before any other args

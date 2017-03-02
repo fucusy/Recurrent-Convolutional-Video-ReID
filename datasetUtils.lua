@@ -32,8 +32,8 @@ function dataset_utils.partitionDataset(nTotalPersons,testTrainSplit)
     trainInds = inds[{{1,splitPoint}}]
     testInds = inds[{{splitPoint+1,nTotalPersons}}]
 
-    print('N train = ' .. trainInds:size(1))
-    print('N test  = ' .. testInds:size(1))
+    info('N train = ' .. trainInds:size(1))
+    info('N test  = ' .. testInds:size(1))
 
     -- save the split to a file for later use
     -- datasetSplit = {
@@ -71,6 +71,7 @@ function dataset_utils.getPosSample(dataset,trainInds,person,sampleSeqLen)
 
     return startA,startB,actualSampleSeqLen
 end
+
 
 -- the dataset format is dataset[person][camera][nSeq][nCrop][FeatureVec]
 -- choose a pair of sequences from different people

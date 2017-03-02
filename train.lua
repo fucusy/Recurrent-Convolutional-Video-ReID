@@ -36,6 +36,7 @@ local prepDataset = require 'prepareDataset'
 -- train the model on the given dataset
 function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, trainInds, testInds)
     local maxDiffSubSame = -1
+    local minValLoss = 100000
     local dim = 3
     if opt.disableOpticalFlow then
         dim = 3
@@ -43,7 +44,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         dim = 5
     end
     local parameters, gradParameters = model:getParameters()
-    print('Number of parameters', parameters:size(1))
+    info(string.format('Number of parameters:%d', parameters:size(1)))
 
     local batchErr = 0
     local nTrainPersons = 0
@@ -90,7 +91,12 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         if opt.trainBatch < iteration_count then
             iteration_count = opt.trainBatch
         end
-        for i = 1, iteration_count do
+
+        local iteration_start = 1
+        if eph == 1 then
+            iteration_start = opt.trainStart + 1
+        end
+        for i = iteration_start, iteration_count do
 
             -- choose the mode / similar - diff
             local pushPull
@@ -206,19 +212,79 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                     local time = timer:time().real
                     timer:reset()
 
-                    print(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, batchErr, time))
+                    info(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, batchErr, time))
                     batchErr = 0
                 end
-                if i % opt.testBatch == 0 then
-                    local avgSame, avgDiff
-                    avgSame, avgDiff = compute_across_view_precision_casia(dataset['val'], Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength, opt.testValPor)
-                    if avgDiff - avgSame > maxDiffSubSame then
-                        print(string.format('change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
-                        maxDiffSubSame = avgDiff - avgSame
+                if i % opt.testLossBatch == 0 then
+                    model:evaluate()
+                    Combined_CNN_RNN:evaluate()
+                    local val_loss = 0.0
+                    for tmp_i=1, opt.testLossBatchCount do
+                        local is_pos, target
+                        if tmp_i % 2 == 0 then
+                            is_pos = 1
+                            target = 1
+                        else
+                            is_pos = 2
+                            target = -1
+                        end
+                        local batch = dataset['val']:next_batch(1, is_pos)
+                        netInputA = batch[1][1]
+                        netInputB = batch[1][2]
+                        local crpxA = torch.floor(torch.rand(1):squeeze() * 8) + 1
+                        local crpyA = torch.floor(torch.rand(1):squeeze() * 8) + 1
+                        local crpxB = torch.floor(torch.rand(1):squeeze() * 8) + 1
+                        local crpyB = torch.floor(torch.rand(1):squeeze() * 8) + 1
+                        local flipA = torch.floor(torch.rand(1):squeeze() * 2) + 1
+                        local flipB = torch.floor(torch.rand(1):squeeze() * 2) + 1
+
+                        -- deal with the case where we have only a single image i.e. meanpool size == 1
+                        if netInputA:dim() == 3 then
+                            netInputA:resize(1, netInputA:size(1), netInputA:size(2), netInputA:size(3))
+                            netInputB:resize(1, netInputB:size(1), netInputB:size(2), netInputB:size(3))
+                        end
+
+                        -- we can't (easily) deal with sequenes that are too short (complicates the code) - just skip them for now...
+                        -- will try to deal with this later...
+                        if netInputA:size(1) ~= opt.sampleSeqLength or netInputB:size(1) ~= opt.sampleSeqLength then
+                            goto continue -- yuck!
+                        end
+
+                        netInputA = doDataAug(netInputA, crpxA, crpyA, flipA)
+                        netInputB = doDataAug(netInputB, crpxB, crpyB, flipB)
+                        local netInputAtable = {}
+                        local netInputBtable = {}
+                        for t = 1, opt.sampleSeqLength do
+                            if opt.noGPU then
+                                netInputAtable[t] = netInputA[{ { t }, {}, {}, {} }]:squeeze():clone()
+                                netInputBtable[t] = netInputB[{ { t }, {}, {}, {} }]:squeeze():clone()
+                            else
+                                netInputAtable[t] = netInputA[{ { t }, {}, {}, {} }]:squeeze():cuda():clone()
+                                netInputBtable[t] = netInputB[{ { t }, {}, {}, {} }]:squeeze():cuda():clone()
+                            end
+                        end
+                        
+                        local vectorA = Combined_CNN_RNN:forward(netInputAtable):double()
+                        local vectorB = Combined_CNN_RNN:forward(netInputBtable):double()
+                        local dst = torch.sqrt(torch.sum(torch.pow(vectorA - vectorB,2)))
+                        if target == 1 then
+                            val_loss = val_loss + dst
+                        else
+                            local margin = opt.hingeMargin
+                            if margin - dst > 0 then
+                                val_loss = val_loss + margin - dst
+                            end
+                        end
+                    end
+
+                    if val_loss < minValLoss then
+                        info(string.format('change min val loss from %0.2f to %0.2f', minValLoss, val_loss))
+                        minValLoss = val_loss
                         local dirname = './trainedNets'
                         os.execute("mkdir  -p " .. dirname)
                         -- save the Model and Convnet (which is part of the model) to a file
-                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_.dat', dirname,opt.saveFileName, maxDiffSubSame)
+                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_eph_%d_itera_%06d_val_loss_batch_count_%06d.dat'
+                            , dirname,opt.saveFileName, minValLoss, eph, i, opt.testLossBatchCount)
                         local saveFileNameModel = string.format(filename_tmp, 'fullModel')
                         torch.save(saveFileNameModel,model)
 
@@ -228,9 +294,38 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         local saveFileNameBasenet = string.format(filename_tmp, 'baseNet')
                         torch.save(saveFileNameBasenet,baseCNN)
                     else
-                        print(string.format('do not change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
+                        info(string.format('validation loss:%0.2f at batch:%04d', val_loss, opt.testLossBatchCount))
+                        info(string.format('do not change val loss from %0.2f to %0.2f', minValLoss, val_loss))
+                    end
+                    model:training()
+                    Combined_CNN_RNN:training()
+                end
+                if i % opt.testBatch == 0 then
+                    model:evaluate()
+                    Combined_CNN_RNN:evaluate()
+                    local avgSame, avgDiff
+                    avgSame, avgDiff = compute_across_view_precision_casia(dataset['val'], Combined_CNN_RNN, opt.embeddingSize, opt.sampleSeqLength, opt.testValPor)
+                    if avgDiff - avgSame > maxDiffSubSame then
+                        info(string.format('change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
+                        maxDiffSubSame = avgDiff - avgSame
+                        local dirname = './trainedNets'
+                        os.execute("mkdir  -p " .. dirname)
+                        -- save the Model and Convnet (which is part of the model) to a file
+                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_cmc_avg_dst_diff.dat', dirname,opt.saveFileName, maxDiffSubSame)
+                        local saveFileNameModel = string.format(filename_tmp, 'fullModel')
+                        torch.save(saveFileNameModel,model)
+
+                        local saveFileNameConvnet = string.format(filename_tmp, 'convNet')
+                        torch.save(saveFileNameConvnet,Combined_CNN_RNN)
+
+                        local saveFileNameBasenet = string.format(filename_tmp, 'baseNet')
+                        torch.save(saveFileNameBasenet,baseCNN)
+                    else
+                        info(string.format('do not change maxdiff from %0.2f to %0.2f', maxDiffSubSame, avgDiff - avgSame))
                     end
 
+                    model:training()
+                    Combined_CNN_RNN:training()
 
                 end
             end
@@ -238,7 +333,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
             if opt.dataset == 1 or opt.dataset == 2 then
                 local time = timer:time().real
                 timer:reset()
-                print(string.format('%05dth epoch Batch Error %0.2f, time %0.1f', eph, iteration_count, batchErr, time))
+                info(string.format('%05dth epoch Batch Error %0.2f, time %0.1f', eph, iteration_count, batchErr, time))
                 batchErr = 0
             end
             if (eph % opt.samplingEpochs == 0) then
@@ -257,8 +352,8 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                             outStringTrain = outStringTrain .. torch.floor(cmcTrain[printInds[c]]) .. ' '
                         end
                     end
-                    print(outStringTest)
-                    print(outStringTrain)
+                    info(outStringTest)
+                    info(outStringTrain)
                 else
                 end
 
@@ -266,7 +361,6 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 Combined_CNN_RNN:training()
             end
         end
-
         return model, Combined_CNN_RNN, baseCNN
     end
 
@@ -277,7 +371,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         local seqDim1 = seq:size(3)
         local seqDim2 = seq:size(4)
 
-        -- print(seqLen,seqChnls,seqDim1,seqDim2,cropx,cropy)
+        -- info(seqLen,seqChnls,seqDim1,seqDim2,cropx,cropy)
 
         local daData = torch.zeros(seqLen, seqChnls, seqDim1 - 8, seqDim2 - 8)
         for t = 1, seqLen do
