@@ -4,7 +4,7 @@ import numpy as np
 import os
 import subprocess
 from scipy.misc import imsave, imread, imresize
-from skimage.morphology import disk, erosion, dilation
+from skimage.morphology import disk, erosion, dilation, square
 from skimage import color as color, filter
 import time
 
@@ -21,7 +21,7 @@ import np_helper
 import configuration as conf
 
 
-def extract_cover(video_path, back_video_path):
+def extract_cover(video_path, back_video_path, repair_to_short_problem=False):
     """
     using ffmpeg to split video to a sequence images at folder named with the video file name
     then get human box data by subtraction and save box data in txt file named image name
@@ -73,6 +73,7 @@ def extract_cover(video_path, back_video_path):
 
 
     img_path = tool.load_img_path_list(origin_img_folder)
+    img_path = sorted(img_path)
     # do subtraction
     img_data = img_path_2_pic(img_path)
     grey_img_data = np.array([color.rgb2gray(x) for x in img_data])
@@ -83,6 +84,11 @@ def extract_cover(video_path, back_video_path):
     box_file.write("\t".join(["img", "left-up-height-i", "left-up-width-i", "box-height", "box-width"]))
     box_file.write("\n")
 
+    if repair_to_short_problem:
+        os.system('rm -r %s' % cover_path)
+        os.system('rm -r %s' % extract_path)
+        os.system('rm -r %s' % extract_cover_path)
+
     if not os.path.exists(extract_cover_path):
         os.makedirs(cover_path)
         os.makedirs(extract_path)
@@ -91,7 +97,7 @@ def extract_cover(video_path, back_video_path):
         for i, img in enumerate(grey_img_data):
             base = os.path.basename(img_path[i])
             save_filename = "%s/%s.bmp" % (cover_path, os.path.splitext(base)[0])
-            sub_img, res = subtract(img, back_grey_img)
+            sub_img, res = subtract(img, back_grey_img, repair_to_short_problem)
             cover_height = res[2]
             cover_width = res[3]
             imsave(save_filename, sub_img)
@@ -112,22 +118,23 @@ def extract_cover(video_path, back_video_path):
                 pass
             else:
                 ratio_setting = conf.data.crop_size_height * 1.0 / conf.data.crop_size_width
-                if cover_height * 1.0 / cover_width >= ratio_setting:
-                    fit_cover_height = cover_height
-                    fit_cover_width = int(fit_cover_height / ratio_setting)
-                else:
-                    fit_cover_width = cover_width
-                    fit_cover_height = int(fit_cover_width * ratio_setting)
-                if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
-                    idx_height = int((conf.data.crop_size_height - fit_cover_height) / 2)
-                    idx_width = int((conf.data.crop_size_width - fit_cover_width) / 2)
-                    extract_img = np_helper.extract_np(extract_img
-                                                       , [idx_height, idx_width]
-                                                       , [fit_cover_height, fit_cover_width]
-                                                       , exact=True
-                                                       )
-                    extract_img = imresize(extract_img, (conf.data.crop_size_height, conf.data.crop_size_width))
-                    imsave(extract_img_filename, extract_img)
+                if cover_width > 0:
+                    if cover_height * 1.0 / cover_width >= ratio_setting:
+                        fit_cover_height = cover_height
+                        fit_cover_width = int(fit_cover_height / ratio_setting)
+                    else:
+                        fit_cover_width = cover_width
+                        fit_cover_height = int(fit_cover_width * ratio_setting)
+                    if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
+                        idx_height = int((conf.data.crop_size_height - fit_cover_height) / 2)
+                        idx_width = int((conf.data.crop_size_width - fit_cover_width) / 2)
+                        extract_img = np_helper.extract_np(extract_img
+                                                           , [idx_height, idx_width]
+                                                           , [fit_cover_height, fit_cover_width]
+                                                           , exact=True
+                                                           )
+                        extract_img = imresize(extract_img, (conf.data.crop_size_height, conf.data.crop_size_width))
+                        imsave(extract_img_filename, extract_img)
 
             if height == conf.data.crop_size_height and width == conf.data.crop_size_width:
                 extract_cover_img = np_helper.extract_np(sub_img, res[0:2], res[2:4])
@@ -273,7 +280,7 @@ def img_path_2_pic(img_paths, func=None):
         img_pics.append(im)
     return np.array(img_pics)
 
-def subtract(img, back):
+def subtract(img, back, repair_to_short_problem=False):
     """
 
     :param img: numpy array
@@ -290,13 +297,17 @@ def subtract(img, back):
 
     sub_img = np.subtract(img, back)
     sub_img = np.absolute(sub_img)
-    clap = 0.08
+    if repair_to_short_problem:
+        clap = 0.02
+    else:
+        clap = 0.08
     low_values_indices = sub_img < clap  # Where values are low
     sub_img[low_values_indices] = 0  # All low values set to 0
 
     sub_img_uint8 = sub_img * 255
     sub_img_uint8 = sub_img_uint8.astype(np.uint8)
-    sub_img_uint8 = filter.median(sub_img_uint8, disk(5))
+    if not repair_to_short_problem:
+        sub_img_uint8 = filter.median(sub_img_uint8, disk(5))
 
     cover_val = max(clap-0.01, 0)
     high_values_indices = sub_img_uint8 >= cover_val
@@ -327,7 +338,6 @@ def subtract(img, back):
                 all_labels[i][j] = 0
     sub_img = all_labels.astype(np.float32) / 255
     return sub_img, get_human_position(all_labels)
-
 
 def get_human_position(img):
     """
@@ -517,6 +527,10 @@ def max_height_width(views=['180', ]):
 
     logging.info('at last, max height %s' % max_height)
     logging.info('at last, max width %s' % max_width)
+
+def get_problem_video_id_list():
+    video_ids = ['068-nm-04-054', ]
+
 
 if __name__ == '__main__':
     #pre_compute_similarity_single_seqs('066-cl-01-090')

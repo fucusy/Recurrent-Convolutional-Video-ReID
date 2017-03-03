@@ -25,8 +25,10 @@ class project:
 class data:
     if local:
         video_path = "/Volumes/Passport/data/CASIA_full_gait_data_set/DatasetB/videos"
+        sub_img_path = "/Volumes/Passport/data/CASIA_full_gait_data_set/DatasetB/silhouettes"
     else:
         video_path = "/home/chenqiang/data/CASIA_DatasetB"
+        sub_img_path = "/home/chenqiang/data/CASIA_DatasetB_silhouettes"
     extract_max_height = 169
     extract_max_width = 93
     crop_size_height = extract_max_height + 8

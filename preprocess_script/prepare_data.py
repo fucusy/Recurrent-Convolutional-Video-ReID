@@ -17,14 +17,14 @@ import configuration as conf
 from data import extract_cover
 
 
-def prepare_same_size_seq_rbg(video_id):
+def prepare_same_size_seq_rbg(video_id, repair_short_problem=False):
     name = video_id
     print 'Run task %s (%s)...' % (name, os.getpid())
     start = time.time()
     hid, cond, seq, view = tool.extract_info_from_path(video_id)
     back_path = "%s/%s-bkgrd-%s.avi" % (conf.data.video_path, hid, view)
     video_path = tool.get_video_path_by_video_id(video_id)
-    target_path = extract_cover(video_path, back_path)
+    target_path = extract_cover(video_path, back_path, repair_short_problem)
     logging.info('cal %s' % video_id)
     end = time.time()
     print 'Task %s runs %0.2f seconds.' % (name, (end - start))
@@ -55,9 +55,11 @@ def prepare_same_size_seq_rbg_main(test=True):
         p.join()
         print 'All subprocesses done.'
 
+
+
 if __name__ == '__main__':
     #test = False
     # prepare_same_size_seq_rbg_main(test)
-    video_id = '005-nm-06-000'
-    prepare_same_size_seq_rbg(video_id)
+    video_id = '096-nm-01-018'
+    prepare_same_size_seq_rbg(video_id, repair_short_problem=True)
 
