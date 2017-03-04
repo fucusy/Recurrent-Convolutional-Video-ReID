@@ -190,35 +190,40 @@ end
 -- the : syntax here causes a "self" arg to be implicitly added before any other args
 function DatasetGenerator:next_batch(batch_size, is_pos)
     local image_count = opt.sampleSeqLength
-    local start = 1
+    local start
+    local pos_idx
     if is_pos == 1 then
         start = self._pos_index
+        pos_idx = 1
     else
         start = self._neg_index
-    end
-    local last = start + batch_size - 1
-    if last > self._size then
-        last = self._size
-        if is_pos then
-            self._pos_index = 1
-        else
-            self._neg_index = 1
-        end
-    end
-    if is_pos == 0 then
-        is_pos = 2
+        pos_idx = 2
     end
 
     local res = {}
-    for i = start, last do
-         local video_id_1 = self._data[is_pos][i][1]
-         local video_id_2 = self._data[is_pos][i][2]
-         local hid1 = string.sub(video_id_1, 1, 3)
-         local hid2 = string.sub(video_id_2, 1, 3)
-         local video_1_images = self:load_images(video_id_1, image_count)
-         local video_2_images = self:load_images(video_id_2, image_count)
-         table.insert(res, {video_1_images, video_2_images, hid1, hid2})
+    local i = start
+    while #res ~= batch_size do
+        local video_id_1 = self._data[pos_idx][i][1]
+        local video_id_2 = self._data[pos_idx][i][2]
+        if #self._video_images[video_id_1] >= opt.sampleSeqLength and #self._video_images[video_id_2] >= opt.sampleSeqLength then
+            local hid1 = string.sub(video_id_1, 1, 3)
+            local hid2 = string.sub(video_id_2, 1, 3)
+            local video_1_images = self:load_images(video_id_1, image_count)
+            local video_2_images = self:load_images(video_id_2, image_count)
+            table.insert(res, {video_1_images, video_2_images, hid1, hid2})
+        end
+        i = i + 1
+        if i > #self._data[pos_idx] then
+            i = 1
+        end
     end
+
+    if is_pos then
+        self._pos_index = i
+    else
+        self._neg_index = i
+    end
+
     return res
 end
 
