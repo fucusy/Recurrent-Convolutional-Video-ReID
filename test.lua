@@ -200,12 +200,16 @@ function compute_across_view_precision_casia(dataset,net,outputSize,sampleSeqLen
             for seq_i, seq in ipairs(gal_seqs) do
                 for i=1, allPersons do
                     local video_id = string.format('%s-%s-%03d', dataset._hids[i], seq, gallery_view)
+                    info(string.format('forward %s now', video_id))
                     gallery_feats[{seq_i, i, {}}] = dataset:forward(video_id, net, sampleSeqLength, doflip, shiftx, shifty)
                 end
             end
             for test_view = 0, 181, 18 do
                 -- nm-01, nm-02, nm-03, nm-04, nm-05, nm-06, cl-01, cl-02, bg-01, bg-02
-                local test_seqs = {'nm-05','nm-06','cl-01','cl-02','bg-01','bg-02'}
+                local test_seqs = {'nm-05','nm-06','cl-01','cl-02','bg-01','bg-02' }
+
+                -- set to nm only
+                test_seqs = {'nm-05','nm-06'}
                 local test_feat = torch.DoubleTensor(outputSize)
                 for seq_i, seq in ipairs(test_seqs) do
                     for i = 1,nPersons do
