@@ -122,6 +122,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 local hidA = tonumber(batch[1][3])
                 local hidB = tonumber(batch[1][4])
                 netTarget = { target, hidA, hidB }
+
             elseif opt.dataset == 1 or opt.dataset == 2 then
                 if i % 2 == 0 then
                     -- choose a positive pair, both sequences show the same person
@@ -211,8 +212,8 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 if i % 50 == 0 then
                     local time = timer:time().real
                     timer:reset()
-
-                    info(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, batchErr, time))
+                    local avg_loss = batchErr / 50
+                    info(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, avg_loss, time))
                     batchErr = 0
                 end
                 if i % opt.testLossBatch == 0 then
@@ -277,9 +278,11 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         end
                     end
 
-                    if val_loss < minValLoss then
-                        info(string.format('change min val loss from %0.2f to %0.2f', minValLoss, val_loss))
-                        minValLoss = val_loss
+                    local avg_loss = val_loss / opt.testLossBatchCount
+                    info(string.format('validation loss:%0.2f at batch:%04d', avg_loss, opt.testLossBatchCount))
+                    if avg_loss < minValLoss then
+                        info(string.format('change min val loss from %0.2f to %0.2f', minValLoss, avg_loss))
+                        minValLoss = avg_loss
                         local dirname = './trainedNets'
                         os.execute("mkdir  -p " .. dirname)
                         -- save the Model and Convnet (which is part of the model) to a file
@@ -294,8 +297,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         local saveFileNameBasenet = string.format(filename_tmp, 'baseNet')
                         torch.save(saveFileNameBasenet,baseCNN)
                     else
-                        info(string.format('validation loss:%0.2f at batch:%04d', val_loss, opt.testLossBatchCount))
-                        info(string.format('do not change val loss from %0.2f to %0.2f', minValLoss, val_loss))
+                        info(string.format('do not change val loss from %0.2f to %0.2f', minValLoss, avg_loss))
                     end
                     model:training()
                     Combined_CNN_RNN:training()
