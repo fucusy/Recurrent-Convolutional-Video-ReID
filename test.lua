@@ -187,57 +187,51 @@ function compute_across_view_precision_casia(dataset,net,outputSize,sampleSeqLen
 
     -- simMat '{gallery_view, '%03d'}-{test_view, '%03d'}-{nm|cl|bg}' => torch.zeros(nPersons,allPersons)
     local simMat = {}
-    local doflit_end = 2
-    for doflip = 1,doflit_end do
-        local shiftx = torch.floor(torch.rand(1):squeeze() * 8) + 1
-        local shifty = torch.floor(torch.rand(1):squeeze() * 8) + 1
-        info(string.format('shiftx = %d, dofilt = %d', shiftx, doflip))
-        for gallery_view = 0, 181, 18 do
-            -- prepare gallery view for all persons
-            local gal_seqs = {'nm-01', 'nm-02', 'nm-03', 'nm-04' }
-            local seq_count = #gal_seqs
-            local gallery_feats = torch.DoubleTensor(seq_count, allPersons, outputSize)
-            for seq_i, seq in ipairs(gal_seqs) do
-                for i=1, allPersons do
-                    local video_id = string.format('%s-%s-%03d', dataset._hids[i], seq, gallery_view)
-                    info(string.format('forward %s now', video_id))
-                    gallery_feats[{seq_i, i, {}}] = dataset:forward(video_id, net, sampleSeqLength, doflip, shiftx, shifty)
-                end
+
+    for gallery_view = 0, 181, 18 do
+        -- prepare gallery view for all persons
+        local gal_seqs = {'nm-01', 'nm-02', 'nm-03', 'nm-04' }
+        local seq_count = #gal_seqs
+        local gallery_feats = torch.DoubleTensor(seq_count, allPersons, outputSize)
+        for seq_i, seq in ipairs(gal_seqs) do
+            for i=1, allPersons do
+                local video_id = string.format('%s-%s-%03d', dataset._hids[i], seq, gallery_view)
+                info(string.format('forward %s now', video_id))
+                gallery_feats[{seq_i, i, {}}] = dataset:forward(video_id, net, sampleSeqLength)
             end
-            for test_view = 0, 181, 18 do
-                -- nm-01, nm-02, nm-03, nm-04, nm-05, nm-06, cl-01, cl-02, bg-01, bg-02
-                local test_seqs = {'nm-05','nm-06','cl-01','cl-02','bg-01','bg-02' }
+        end
+        for test_view = 0, 181, 18 do
+            -- nm-01, nm-02, nm-03, nm-04, nm-05, nm-06, cl-01, cl-02, bg-01, bg-02
+            local test_seqs = {'nm-05','nm-06','cl-01','cl-02','bg-01','bg-02' }
 
-                -- set to nm only
-                test_seqs = {'nm-05','nm-06'}
-                local test_feat = torch.DoubleTensor(outputSize)
-                for seq_i, seq in ipairs(test_seqs) do
-                    for i = 1,nPersons do
-                        local video_id = string.format('%s-%s-%03d', selectedHids[i], seq, test_view)
-                        test_feat = dataset:forward(video_id, net, sampleSeqLength, doflip, shiftx, shifty)
-                        for gallery_j = 1, allPersons do
-                            for gal_seq_i, gal_seq in ipairs(gal_seqs) do
-                                local f_gallery = gallery_feats[{{gal_seq_i},{gallery_j}}]:squeeze()
-                                local dst = torch.sqrt(torch.sum(torch.pow(f_gallery - test_feat,2)))
-                                local key_str = string.format('%03d-%03d-%s', gallery_view, test_view, string.sub(seq,1,2))
-                                if simMat[key_str] == nil then
-                                    simMat[key_str] = torch.zeros(nPersons, allPersons)
-                                end
-                                simMat[key_str][i][gallery_j] = simMat[key_str][i][gallery_j] + dst
+            -- set to nm only
+            test_seqs = {'nm-05','nm-06'}
+            local test_feat = torch.DoubleTensor(outputSize)
+            for seq_i, seq in ipairs(test_seqs) do
+                for i = 1,nPersons do
+                    local video_id = string.format('%s-%s-%03d', selectedHids[i], seq, test_view)
+                    test_feat = dataset:forward(video_id, net, sampleSeqLength)
+                    for gallery_j = 1, allPersons do
+                        for gal_seq_i, gal_seq in ipairs(gal_seqs) do
+                            local f_gallery = gallery_feats[{{gal_seq_i},{gallery_j}}]:squeeze()
+                            local dst = torch.sqrt(torch.sum(torch.pow(f_gallery - test_feat,2)))
+                            local key_str = string.format('%03d-%03d-%s', gallery_view, test_view, string.sub(seq,1,2))
+                            if simMat[key_str] == nil then
+                                simMat[key_str] = torch.zeros(nPersons, allPersons)
+                            end
+                            simMat[key_str][i][gallery_j] = simMat[key_str][i][gallery_j] + dst
 
-                                if selectedHids[i] == dataset._hids[gallery_j] then
-                                    avgSame = avgSame  + dst
-                                    avgSameCount = avgSameCount + 1
-                                else
-                                    avgDiff = avgDiff + dst
-                                    avgDiffCount = avgDiffCount + 1
-                                end
+                            if selectedHids[i] == dataset._hids[gallery_j] then
+                                avgSame = avgSame  + dst
+                                avgSameCount = avgSameCount + 1
+                            else
+                                avgDiff = avgDiff + dst
+                                avgDiffCount = avgDiffCount + 1
                             end
                         end
-
                     end
-                end
 
+                end
             end
         end
 
@@ -246,7 +240,8 @@ function compute_across_view_precision_casia(dataset,net,outputSize,sampleSeqLen
     avgSame = avgSame / avgSameCount
     avgDiff = avgDiff / avgDiffCount
 
-    local test_seqs = {'nm','cl','bg'}
+    local test_seqs = {'nm','cl','bg' }
+    test_seqs = {'nm'}
     for gallery_view = 0, 181, 18 do
         for test_view = 0, 181, 18 do
             for seq_i, seq in ipairs(test_seqs) do

@@ -154,7 +154,7 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
     if not opt.noGPU then
         mlp6:cuda()
     end
-    
+
     local mlp7 = nn.Sequential()
     mlp7:add(classifierLayer:clone('weight','bias','gradWeight','gradBias'))
     mlp7:add(nn.LogSoftMax())
@@ -162,27 +162,19 @@ function buildModel_MeanPool_RNN(nFltrs1,nFltrs2,nFltrs3,nPersonsTrain)
         mlp7:cuda()
     end
 
-    local mlp5 = nn.ParallelTable()
+    local mlp5 = nn.Sequential()
     mlp5:add(nn.PairwiseDistance(2))
-    mlp5:add(mlp6)
-    mlp5:add(mlp7)
     if not opt.noGPU then
         mlp5:cuda()
     end
 
     local fullModel = nn.Sequential()
     fullModel:add(mlp2)
-    fullModel:add(mlp3)
-    fullModel:add(mlp4)
     fullModel:add(mlp5)
     if not opt.noGPU then
         fullModel:cuda()
     end
-    local crit = nn.SuperCriterion()
-    crit:add(nn.HingeEmbeddingCriterion(2),1)
-    crit:add(nn.ClassNLLCriterion(),1)
-    crit:add(nn.ClassNLLCriterion(),1)
-
+    local crit = nn.HingeEmbeddingCriterion(2)
     return fullModel, crit, Combined_CNN_RNN_1, cnn
 end
 

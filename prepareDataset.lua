@@ -23,13 +23,13 @@ require 'nn'
 require 'nnx'
 require 'optim'
 
-require 'cunn'
-require 'cutorch'
-
 require 'paths'
 require 'image'
 
-
+if not opt.noGPU then
+  require 'cunn'
+  require 'cutorch'
+end
 
 --load all images into a flat list
 local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
@@ -39,8 +39,8 @@ local function loadSequenceImages(cameraDir,opticalflowDir,filesList)
     if opt.disableOpticalFlow then
       dim = 3
     end
-    local height = 48
-    local width = 64
+    local height = 40
+    local width = 56
     local imagePixelData = torch.DoubleTensor(1,dim,height,width)
     if #filesList == 0 then
         info(string.format('no image found at %s, return zero tensor', cameraDir))
@@ -150,7 +150,7 @@ function DatasetGenerator:load_images(video_id, image_count)
     return video_images
 end
 
-function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx, shifty)
+function DatasetGenerator:forward(video_id, net, sampleSeqLength)
     local img_seqs = self._video_images[video_id]
     local actualSampleLen = 0
     local seqLen = #img_seqs
@@ -161,20 +161,14 @@ function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx
     end
     info(video_id)
     local seq = self:load_images(video_id, actualSampleLen)
-
     -- resize if only one image, but I do not think there is only one image
     if seq:dim() == 3 then
         seq:resize(1,seq:size(1),seq:size(2),seq:size(3))
     end
-
     -- augment each of the images in the sequence
     local augSeq = {}
     for k = 1,actualSampleLen do
         local u = seq[{{k},{},{},{}}]:squeeze():clone()
-        if doflip == 1 then
-            u = image.hflip(u)
-        end
-        u = image.crop(u,shiftx,shifty,40+shiftx,56+shifty)
         u = u - torch.mean(u)
         if opt.noGPU then
           augSeq[k] = u:clone()
@@ -184,8 +178,6 @@ function DatasetGenerator:forward(video_id, net, sampleSeqLength, doflip, shiftx
     end
     return net:forward(augSeq):double()
 end
-
-
 
 -- the : syntax here causes a "self" arg to be implicitly added before any other args
 function DatasetGenerator:next_batch(batch_size, is_pos)
