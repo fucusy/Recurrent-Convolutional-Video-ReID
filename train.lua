@@ -135,18 +135,10 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 Combined_CNN_RNN:evaluate()
                 local margin_loss = 0
                 for i, input in ipairs(inputs) do
-                    local target = targets[i]
-                    local vectorA = Combined_CNN_RNN:forward(input[1]):double()
-                    local vectorB = Combined_CNN_RNN:forward(input[2]):double()
-                    local dst = torch.sqrt(torch.sum(torch.pow(vectorA - vectorB, 2)))
-                    if target == 1 then
-                        margin_loss = margin_loss + dst
-                    else
-                        local margin = opt.hingeMargin
-                        if margin - dst > 0 then
-                            margin_loss = margin_loss + margin - dst
-                        end
-                    end
+                    local output = model:forward(input)
+                    output = output:double()
+                    local netError = criterion:forward(output, targets[i])
+                    margin_loss = margin_loss + netError
                 end
                 margin_loss = margin_loss / #inputs
                 info(string.format('%05dth/%05d Margin Error %0.2f', i, iteration_count, margin_loss))
@@ -239,6 +231,8 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                             end
                         end
                     end
+                    dataset['val']:set_pos_index(1)
+                    dataset['val']:set_neg_index(1)
                     local avg_loss = val_loss / opt.testLossBatchCount
                     info(string.format('validation loss:%0.2f at batch:%04d', avg_loss, opt.testLossBatchCount))
                     if avg_loss < minValLoss then
