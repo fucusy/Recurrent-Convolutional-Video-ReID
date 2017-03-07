@@ -190,6 +190,8 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                     timer:reset()
                     local avg_loss = batchError
                     info(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, avg_loss, time))
+                    info(string.format('dataset[train] pos index, %s', dataset['train']._pos_index));
+                    info(string.format('dataset[train] neg index, %s', dataset['train']._neg_index));
                 end
                 if i ~= 1 and ((i -1) / opt.trainBatchSize) % opt.testLossBatch == 0 then
                     model:evaluate()
@@ -223,6 +225,8 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         local model_dst = criterion:forward(output, target)
                         val_loss = val_loss + model_dst
                     end
+                    info(string.format('dataset[val] pos index, %s', dataset['val']._pos_index));
+                    info(string.format('dataset[val] neg index, %s', dataset['val']._neg_index));
                     dataset['val']:set_pos_index(1)
                     dataset['val']:set_neg_index(1)
                     local avg_loss = val_loss / opt.testLossBatchCount
