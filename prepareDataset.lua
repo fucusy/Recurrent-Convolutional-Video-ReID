@@ -26,7 +26,7 @@ require 'optim'
 require 'paths'
 require 'image'
 
-if not opt.noGPU then
+if opt.gpu then
   require 'cunn'
   require 'cutorch'
 end

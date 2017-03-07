@@ -37,7 +37,7 @@ require 'tool'
 
 local prepDataset = require 'prepareDataset'
 -- set the GPU
-if not opt.noGPU then
+if opt.gpu then
     require 'cunn'
     require 'cutorch'
     cutorch.setDevice(2)
@@ -62,7 +62,7 @@ for i=1, 2 * opt.trainBatchSize do
     local x = {}
     local y = {}
     for t = 1, opt.sampleSeqLength do
-        if not opt.noGPU then
+        if opt.gpu then
             table.insert(x, torch.zeros(dim, 56, 40):cuda())
             table.insert(y, torch.zeros(dim, 56, 40):cuda())
         else

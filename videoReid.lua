@@ -56,7 +56,7 @@ cmd:option('-loadModelFromFile', '', 'load fullmodel, rnn model, cnn model')
 
 cmd:option('-usePredefinedSplit',false,'Use predefined test/training split loaded from a file')
 cmd:option('-disableOpticalFlow',true,'use optical flow features or not')
-cmd:option('-noGPU', true, 'do not use GPU')
+cmd:option('-gpu', false, 'use GPU')
 cmd:option('-debug', false, 'debug mode or not')
 cmd:option('-gpuDevice', 2, 'set gpu device')
 
@@ -76,7 +76,7 @@ local prepDataset = require 'prepareDataset'
 
 
 -- set the GPU
-if not opt.noGPU then
+if opt.gpu then
     require 'cunn'
     require 'cutorch'
     cutorch.setDevice(opt.gpuDevice)

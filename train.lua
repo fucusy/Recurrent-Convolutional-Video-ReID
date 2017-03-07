@@ -27,7 +27,7 @@ require 'image'
 require 'paths'
 require 'rnn'
 
-if not opt.noGPU then
+if opt.gpu then
     require 'cunn'
     require 'cutorch'
 end
@@ -59,7 +59,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         local x = {}
         local y = {}
         for t = 1, opt.sampleSeqLength do
-            if not opt.noGPU then
+            if opt.gpu then
                 table.insert(x, torch.zeros(dim, 56, 40):cuda())
                 table.insert(y, torch.zeros(dim, 56, 40):cuda())
             else
@@ -167,13 +167,13 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 for i, input in ipairs(inputs) do
                     --forward
                     local output = model:forward(input)
-                    if not opt.noGPU then
+                    if opt.gpu then
                         output = convertToDouble(output)
                     end
                     local netError = criterion:forward(output, targets[i])
                     --backward
                     local gradCriterion = criterion:backward(output, targets[i])
-                    if not opt.noGPU then
+                    if opt.gpu then
                         gradCriterion = convertToCuda(gradCriterion)
                     end
                     model:backward(input, gradCriterion)

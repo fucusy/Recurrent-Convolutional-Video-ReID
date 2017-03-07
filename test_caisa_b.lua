@@ -35,7 +35,7 @@ require 'tool'
 
 local prepDataset = require 'prepareDataset'
 -- set the GPU
-if not opt.noGPU then
+if opt.gpu then
     require 'cunn'
     require 'cutorch'
     cutorch.setDevice(2)
