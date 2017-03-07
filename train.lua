@@ -130,7 +130,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         end
       end
 
-            if i % 10 == 0 then
+            if ((i -1) / opt.trainBatchSize ) % 10 == 0 then
                 model:evaluate()
                 Combined_CNN_RNN:evaluate()
                 local margin_loss = 0
@@ -193,13 +193,13 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
             end
             optim.sgd(feval, parameters, optim_state)
             if opt.dataset == 3 then
-                if i % 5 == 0 then
+                if ((i -1) / opt.trainBatchSize)  % 5 == 0 then
                     local time = timer:time().real
                     timer:reset()
                     local avg_loss = batchError
                     info(string.format('%05dth/%05d Batch Error %0.2f, time %0.1f', i, iteration_count, avg_loss, time))
                 end
-                if i % opt.testLossBatch == 0 then
+                if i ~= 1 and ((i -1) / opt.trainBatchSize) % opt.testLossBatch == 0 then
                     model:evaluate()
                     Combined_CNN_RNN:evaluate()
                     local val_loss = 0.0
