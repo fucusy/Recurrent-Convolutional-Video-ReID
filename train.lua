@@ -218,18 +218,10 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                                 netInputBtable[t] = netInputB[{ { t }, {}, {}, {} }]:squeeze():cuda():clone()
                             end
                         end
-
-                        local vectorA = Combined_CNN_RNN:forward(netInputAtable):double()
-                        local vectorB = Combined_CNN_RNN:forward(netInputBtable):double()
-                        local dst = torch.sqrt(torch.sum(torch.pow(vectorA - vectorB, 2)))
-                        if target == 1 then
-                            val_loss = val_loss + dst
-                        else
-                            local margin = opt.hingeMargin
-                            if margin - dst > 0 then
-                                val_loss = val_loss + margin - dst
-                            end
-                        end
+                        local output = model:forward({netInputAtable, netInputBtable})
+                        output = output:double()
+                        local model_dst = criterion:forward(output, target)
+                        val_loss = val_loss + model_dst
                     end
                     dataset['val']:set_pos_index(1)
                     dataset['val']:set_neg_index(1)
