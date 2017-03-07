@@ -22,3 +22,31 @@ function splitByComma(str)
     end
     return res
 end
+
+function convertToType(output, c_type)
+    if type(output) == 'table' then
+        for i=1, #output do
+            if c_type == 'double' then
+                output[i] = output[i]:double()
+            elseif c_type == 'cuda' then
+                output[i] = output[i]:cuda()
+            end
+        end
+    else
+        if c_type == 'double' then
+            output = output:double()
+        elseif c_type == 'cuda' then
+            output = output:cuda()
+        end
+    end
+    return output
+
+end
+
+function convertToDouble(output)
+    return convertToType(output, 'double')
+end
+
+function convertToCuda(output)
+    return convertToType(output, 'cuda')
+end

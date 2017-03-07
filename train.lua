@@ -55,20 +55,20 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         momentum = opt.momentum,
     }
     local inputs = {}
-    for i=1, opt.trainBatchSize do
-      local x = {}
-      local y = {}
-      for t = 1, opt.sampleSeqLength do
-          if not opt.noGPU then
-              table.insert(x, torch.zeros(dim, 56, 40):cuda())
-              table.insert(y, torch.zeros(dim, 56, 40):cuda())
-          else
-              table.insert(x, torch.zeros(dim, 56, 40))
-              table.insert(y, torch.zeros(dim, 56, 40))
-          end
-      end
-      local input = { x, y }
-      table.insert(inputs, input)
+    for i = 1, opt.trainBatchSize do
+        local x = {}
+        local y = {}
+        for t = 1, opt.sampleSeqLength do
+            if not opt.noGPU then
+                table.insert(x, torch.zeros(dim, 56, 40):cuda())
+                table.insert(y, torch.zeros(dim, 56, 40):cuda())
+            else
+                table.insert(x, torch.zeros(dim, 56, 40))
+                table.insert(y, torch.zeros(dim, 56, 40))
+            end
+        end
+        local input = { x, y }
+        table.insert(inputs, input)
     end
 
 
@@ -88,7 +88,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
         if eph == 1 then
             iteration_start = opt.trainStart + 1
         end
-        for i = iteration_start,iteration_count,opt.trainBatchSize  do
+        for i = iteration_start, iteration_count, opt.trainBatchSize do
             -- choose the mode / similar - diff
             local pushPull
             local netInputA
@@ -96,47 +96,46 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
             local classLabel1
             local classLabel2
             local netTarget
-			local targets = {}
-      
-      local inputs_tensor = {}
+            local targets = {}
 
-			local pos_batch = dataset['train']:next_batch(opt.trainBatchSize / 2, 1)
-			local neg_batch = dataset['train']:next_batch(opt.trainBatchSize / 2, 0)
+            local inputs_tensor = {}
 
-			for i, val in ipairs(pos_batch) do
-				local video1 = val[1]
-				local video2 = val[2]
-				local hid1 = tonumber(val[3])
-				local hid2 = tonumber(val[4])
-				local target = 1
-				table.insert(inputs_tensor, {video1, video2})
-				table.insert(targets, target)
-			end
-      
-			for i, val in ipairs(neg_batch) do
-				local video1 = val[1]
-				local video2 = val[2]
-				local hid1 = tonumber(val[3])
-				local hid2 = tonumber(val[4])
-				local target = -1
-				table.insert(inputs_tensor, {video1, video2})
-				table.insert(targets, target)
-			end
-      
-      for i=1, #inputs_tensor do
-        for t=1, opt.sampleSeqLength do
-          inputs[i][1][t]:copy(inputs_tensor[i][1][{{t}, {}, {}, {}}])
-          inputs[i][2][t]:copy(inputs_tensor[i][2][{{t}, {}, {}, {}}])
-        end
-      end
+            local pos_batch = dataset['train']:next_batch(opt.trainBatchSize / 2, 1)
+            local neg_batch = dataset['train']:next_batch(opt.trainBatchSize / 2, 0)
+            for i = 1, #pos_batch + #neg_batch do
+                local target, val
+                if i > #pos_batch then
+                    target = -1
+                    val = neg_batch[i - #pos_batch]
+                else
+                    target = 1
+                    val = pos_batch[i]
+                end
+                local video1 = val[1]
+                local video2 = val[2]
+                local hid1 = tonumber(val[3])
+                local hid2 = tonumber(val[4])
+                table.insert(inputs_tensor, { video1, video2 })
+                if opt.modelName == 'withid' then
+                    table.insert(targets, { target, hid1, hid2 })
+                elseif opt.modelName == 'basicnet' then
+                    table.insert(targets, target)
+                end
+            end
+            for i = 1, #inputs_tensor do
+                for t = 1, opt.sampleSeqLength do
+                    inputs[i][1][t]:copy(inputs_tensor[i][1][{ { t }, {}, {}, {} }])
+                    inputs[i][2][t]:copy(inputs_tensor[i][2][{ { t }, {}, {}, {} }])
+                end
+            end
 
-            if ((i -1) / opt.trainBatchSize ) % 10 == 0 then
+            if ((i - 1) / opt.trainBatchSize) % 10 == 0 then
                 model:evaluate()
                 Combined_CNN_RNN:evaluate()
                 local margin_loss = 0
                 for i, input in ipairs(inputs) do
                     local output = model:forward(input)
-                    output = output:double()
+                    output = convertToDouble(output)
                     local netError = criterion:forward(output, targets[i])
                     margin_loss = margin_loss + netError
                 end
@@ -144,14 +143,14 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                 info(string.format('%05dth/%05d Margin Error %0.2f', i, iteration_count, margin_loss))
                 if margin_loss < 0.3 then
                     local dirname = './trainedNets'
-                    local saveFileNameConvnet = string.format('%s/convNet_%s_train_%0.2f_%05d.dat', dirname, opt.saveFileName, margin_loss, i)
-                    torch.save(saveFileNameConvnet,Combined_CNN_RNN)
+                    local saveFileNameConvnet = string.format('%s/convNet_%s_train_%0.2f_%05d.dat', dirname, opt.modelName, margin_loss, i)
+                    torch.save(saveFileNameConvnet, Combined_CNN_RNN)
                 end
                 model:training()
                 Combined_CNN_RNN:training()
             end
 
-      
+
 
             -- note that due to a problem with SuperCriterion we must cast
             -- from CUDA to double and back before passing data to/from the
@@ -164,28 +163,30 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                     parameters:copy(x)
                 end
                 gradParameters:zero()
-				
-				for i, input in ipairs(inputs) do
-					--forward
-					local output = model:forward(input)
-                    output = output:double()
-					local netError = criterion:forward(output, targets[i])
-					--backward
-					local gradCriterion = criterion:backward(output, targets[i])
-          if not opt.noGPU then
-            gradCriterion = gradCriterion:cuda()
-          end
-					model:backward(input, gradCriterion)
-					batchError = batchError + netError
-					gradParameters:clamp(-opt.gradClip, opt.gradClip)
-				end
-				gradParameters:div(#inputs)
-				batchError = batchError/#inputs
+
+                for i, input in ipairs(inputs) do
+                    --forward
+                    local output = model:forward(input)
+                    if not opt.noGPU then
+                        output = convertToDouble(output)
+                    end
+                    local netError = criterion:forward(output, targets[i])
+                    --backward
+                    local gradCriterion = criterion:backward(output, targets[i])
+                    if not opt.noGPU then
+                        gradCriterion = convertToCuda(gradCriterion)
+                    end
+                    model:backward(input, gradCriterion)
+                    batchError = batchError + netError
+                    gradParameters:clamp(-opt.gradClip, opt.gradClip)
+                end
+                gradParameters:div(#inputs)
+                batchError = batchError / #inputs
                 return batchError, gradParameters
             end
             optim.sgd(feval, parameters, optim_state)
             if opt.dataset == 3 then
-                if ((i -1) / opt.trainBatchSize)  % 5 == 0 then
+                if ((i - 1) / opt.trainBatchSize) % 5 == 0 then
                     local time = timer:time().real
                     timer:reset()
                     local avg_loss = batchError
@@ -193,7 +194,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                     info(string.format('dataset[train] pos index, %s', dataset['train']._pos_index));
                     info(string.format('dataset[train] neg index, %s', dataset['train']._neg_index));
                 end
-                if i ~= 1 and ((i -1) / opt.trainBatchSize) % opt.testLossBatch == 0 then
+                if i ~= 1 and ((i - 1) / opt.trainBatchSize) % opt.testLossBatch == 0 then
                     model:evaluate()
                     Combined_CNN_RNN:evaluate()
                     local val_loss = 0.0
@@ -220,9 +221,16 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                                 netInputBtable[t] = netInputB[{ { t }, {}, {}, {} }]:squeeze():cuda():clone()
                             end
                         end
-                        local output = model:forward({netInputAtable, netInputBtable})
-                        output = output:double()
-                        local model_dst = criterion:forward(output, target)
+                        local output = model:forward({ netInputAtable, netInputBtable })
+                        output = convertToDouble(output)
+                        local hinge_loss_criterion = nn.HingeEmbeddingCriterion(2)
+                        local dst;
+                        if type(output) == 'table' then
+                            dst = output[1]
+                        else
+                            dst = output
+                        end
+                        local model_dst = hinge_loss_criterion:forward(dst, target)
                         val_loss = val_loss + model_dst
                     end
                     info(string.format('dataset[val] pos index, %s', dataset['val']._pos_index));
@@ -237,7 +245,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         local dirname = './trainedNets'
                         os.execute("mkdir  -p " .. dirname)
                         -- save the Model and Convnet (which is part of the model) to a file
-                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_eph_%d_itera_%06d_val_loss_batch_count_%06d.dat', dirname, opt.saveFileName, minValLoss, eph, i, opt.testLossBatchCount)
+                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_eph_%d_itera_%06d_val_loss_batch_count_%06d.dat', dirname, opt.modelName, minValLoss, eph, i, opt.testLossBatchCount)
                         local saveFileNameModel = string.format(filename_tmp, 'fullModel')
                         torch.save(saveFileNameModel, model)
 
@@ -263,7 +271,7 @@ function trainSequence(model, Combined_CNN_RNN, baseCNN, criterion, dataset, tra
                         local dirname = './trainedNets'
                         os.execute("mkdir  -p " .. dirname)
                         -- save the Model and Convnet (which is part of the model) to a file
-                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_cmc_avg_dst_diff.dat', dirname, opt.saveFileName, maxDiffSubSame)
+                        local filename_tmp = string.format('%s/%%s_%s_%0.2f_cmc_avg_dst_diff.dat', dirname, opt.modelName, maxDiffSubSame)
                         local saveFileNameModel = string.format(filename_tmp, 'fullModel')
                         torch.save(saveFileNameModel, model)
 

@@ -34,9 +34,9 @@ cmd:option('-valStart', 1,'start at index when validation')
 cmd:option('-dataset',3,'1 -  ilids, 2 - prid, 3 - CASIA B clipped')
 cmd:option('-sampleSeqLength',36,'length of sequence to train network')
 cmd:option('-gradClip',5,'magnitude of clip on the RNN gradient')
-cmd:option('-saveFileName','basicnet','name to save dataset file')
-cmd:option('-dropoutFrac',0.6,'fraction of dropout to use between layers')
-cmd:option('-dropoutFracRNN',0.6,'fraction of dropout to use between RNN layers')
+cmd:option('-modelName','withid','basicnet, withid, fcn, name to save dataset file')
+cmd:option('-dropoutFrac',0.0,'fraction of dropout to use between layers')
+cmd:option('-dropoutFracRNN',0.0,'fraction of dropout to use between RNN layers')
 cmd:option('-samplingEpochs',100,'how often to compute the CMC curve - dont compute too much - its slow!')
 cmd:option('-seed',1,'random seed')
 cmd:option('-learningRate',1e-3)
@@ -46,8 +46,8 @@ cmd:option('-embeddingSize',32)
 cmd:option('-hingeMargin',2)
 cmd:option('-dataPath','/Volumes/Passport/data/gait-rnn', 'base data path')
 cmd:option('-testBatch', 500000000, 'calculate cmc on validation every batch')
-cmd:option('-testLossBatch', 10, 'calculate loss on validation every batch')
-cmd:option('-testLossBatchCount', 10, 'calculate loss on validation every batch')
+cmd:option('-testLossBatch', 2, 'calculate loss on validation every batch')
+cmd:option('-testLossBatchCount', 2, 'calculate loss on validation every batch')
 cmd:option('-trainBatch', 200000000, 'how many batch you train in every epoch')
 cmd:option('-trainBatchSize', 2, 'how many intance in a traning batch')
 cmd:option('-testValPor', 0.5, 'test on validation at proportion')
@@ -58,7 +58,6 @@ cmd:option('-usePredefinedSplit',false,'Use predefined test/training split loade
 cmd:option('-disableOpticalFlow',true,'use optical flow features or not')
 cmd:option('-noGPU', true, 'do not use GPU')
 cmd:option('-debug', false, 'debug mode or not')
-cmd:option('-fcnModel', false, 'load self define full convontional network model')
 cmd:option('-gpuDevice', 2, 'set gpu device')
 
 opt = cmd:parse(arg)
@@ -113,11 +112,13 @@ local train_count = 0
 local person_count = 50
 
 -- build the model
-if opt.fcnModel then
+if opt.modelName == 'fcn' then
     opt.embeddingSize = opt.nConvFilters * 10 * 8
     fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN_FCN(16,opt.nConvFilters,opt.nConvFilters,person_count)
-else
+elseif opt.modelName == 'basicnet' then
     fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN(16,opt.nConvFilters,opt.nConvFilters,person_count)
+elseif opt.modelName == 'withid' then
+    fullModel,criterion,Combined_CNN_RNN,baseCNN = buildModel_MeanPool_RNN_WITH_ID(16,opt.nConvFilters,opt.nConvFilters,person_count)
 end
 
 print(fullModel)
@@ -148,13 +149,13 @@ trainedModel,trainedConvnet,trainedBaseNet = trainSequence(fullModel,Combined_CN
 dirname = './trainedNets'
 os.execute("mkdir  -p " .. dirname)
 -- save the Model and Convnet (which is part of the model) to a file
-saveFileNameModel = dirname .. '/fullModel_' .. opt.saveFileName .. '.dat'
+saveFileNameModel = dirname .. '/fullModel_' .. opt.modelName .. '.dat'
 torch.save(saveFileNameModel,trainedModel)
 
-saveFileNameConvnet = dirname .. '/convNet_' .. opt.saveFileName .. '.dat'
+saveFileNameConvnet = dirname .. '/convNet_' .. opt.modelName .. '.dat'
 torch.save(saveFileNameConvnet,trainedConvnet)
 
-saveFileNameBasenet = dirname .. '/baseNet_' .. opt.saveFileName .. '.dat'
+saveFileNameBasenet = dirname .. '/baseNet_' .. opt.modelName .. '.dat'
 torch.save(saveFileNameBasenet,trainedBaseNet)
 
 ------------------------------------------------------------------------------------------------------------------------------------
