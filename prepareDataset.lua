@@ -206,11 +206,12 @@ function DatasetGenerator:next_batch(batch_size, is_pos)
         end
         i = i + 1
         if i > #self._data[pos_idx] then
+            info('reset i = 1')
             i = 1
         end
     end
 
-    if is_pos then
+    if is_pos == 1 then
         self._pos_index = i
     else
         self._neg_index = i
